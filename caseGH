@@ -1,0 +1,87 @@
+time_periods=36
+
+types = 1,2,1
+
+#cost fuel consumption per type
+cost1_0 = 110,105,90
+cost1_1 = 88,95,63
+cost1_2 = 76,87,46
+cost1_3 = 70,80,40
+cost2 = 130,120,110
+cost3 = 120,130,95
+costGH_1 = 30,25,15
+costGH_4 = 20,15,5
+costGH_9 = 35,40,20
+costGH_11 = 20,15,5
+costGH_14 = 30,25,15
+
+#capacity of airplanes type
+flight_cap = 180,220,110
+
+# Routes
+cheap_Routes=1,4,4,1,9,4,9,11,4,11,11,4,14,11
+affordable_Routes=1,11,11,1,4,14,14,4,11,9,4,9,11,14
+expensive_Routes=1,9,9,1,9,14,14,9,1,14,14,1
+
+# ticket price per type
+cheap_ticket = 55,70,40
+affordable_ticket = 70,90,65
+expensive_ticket = 100,120,80
+
+# travel periods references
+tPr = 1,2,3
+tMin = 1,2,3
+tMax = 3,4,5
+depMax = 4,3,2
+
+# airports and capacities
+airports = 1,4,9,11,14
+dep_area = 16,18,20,22,24
+ar_area = 17,19,21,23,25
+ar_cap_airports=4,2,4,1,3
+dep_cap_airports=3,2,4,1,3
+
+#Levels and capacities
+levels = 0,1,2,3
+n_levels=4
+cap_per_level = 10,1,2,3
+groundLevel = 0
+
+# Permitted Arcs
+n_nodes = 26
+
+internal_nodes=0,2,3,5,6,7,8,10,12,13,15
+
+arcs=0,1,0,4,\
+  1,0,1,2,1,5,1,6,\
+  2,1,2,3,2,6,\
+  3,2,3,7,\
+  4,0,4,5,4,8,\
+  5,1,5,4,5,6,5,9,5,10,\
+  6,1,6,2,6,5,6,7,6,9,6,10,\
+  7,3,7,6,7,11,\
+  8,4,8,9,8,12,8,13,\
+  9,5,9,6,9,8,9,10,\
+  10,5,10,6,10,9,10,11,10,14,\
+  11,7,11,10,11,15,\
+  12,8,12,13,\
+  13,8,13,9,13,12,13,14,\
+  14,10,14,13,14,15,\
+  15,11,15,14
+
+airport_arcs=16,1,1,17,\
+  18,4,4,19,\
+  20,9,9,21,\
+  22,11,11,23,\
+  24,14,14,25
+
+# Flight data per airplane
+airplanes = 0,1,2,3
+
+dep_time = 2,2,2,2
+
+dep_airport = 4,4,4,4
+
+ar_airport = 14,1,9,11
+
+arcs_per_flight = 5,5,5,5
