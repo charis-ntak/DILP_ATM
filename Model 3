@@ -1,0 +1,651 @@
+import ilog.concert.IloException;
+import ilog.concert.IloLinearNumExpr;
+import ilog.concert.IloNumVar;
+import ilog.cplex.IloCplex;
+import sun.security.ssl.SSLContextImpl;
+
+import java.io.IOException;
+import java.io.PrintStream;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Properties;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
+
+/**
+ * Created by Hernan Caceres & Charis Ntakolia on 4/25/2017.
+ */
+public class ATM4D {
+
+    public static void main(String[] args) throws IloException, IOException {
+
+        Properties parameters = new Properties();
+        parameters.load(Files.newInputStream(Paths.get("caseCancel")));
+
+        //Definition of Sets
+
+        //Define the set of Nodes N
+        int nNodes = Integer.parseInt(parameters.getProperty("n_nodes"));
+        List<Integer> N = IntStream.range(0, nNodes).boxed().collect(Collectors.toList());
+
+        //Define the set of Time Periods
+        int periods = Integer.parseInt(parameters.getProperty("time_periods"));
+        List<Integer> T = IntStream.range(0, periods).boxed().collect(Collectors.toList());
+
+        //Define the set of Airplanes
+        List<Integer> K = Arrays
+                .stream(parameters.getProperty("airplanes").split(","))
+                .map(Integer::parseInt)
+                .collect(Collectors.toList());
+
+        //Define the set of internal nodes (nodes without airports)
+        List<Integer> I = Arrays
+                .stream(parameters.getProperty("internal_nodes").split(","))
+                .map(Integer::parseInt)
+                .collect(Collectors.toList());
+
+        int nAirplanes = K.size();
+
+        // int nAirplanes = Arrays
+        //        .stream(parameters.getProperty("types").split(","))
+        //       .mapToInt(Integer::parseInt)
+        //       .sum();
+        //List<Integer> K = IntStream.range(0, nAirplanes).boxed().collect(Collectors.toList());
+
+
+        //Define the set of Levels
+        int nLevels = Integer.parseInt(parameters.getProperty("n_levels"));
+        List<Integer> L = IntStream.range(0, nLevels).boxed().collect(Collectors.toList());
+
+        //Define the set of Airports
+        List<Integer> P = Arrays
+                .stream(parameters.getProperty("airports").split(","))
+                .map(Integer::parseInt)
+                .collect(Collectors.toList());
+
+        //Define the set of Arcs
+        boolean[][] allArcs = new boolean[nNodes][nNodes]; //Combine arcs and airport arcs
+        boolean[][] arcs = new boolean[nNodes][nNodes];
+        String[] arcsString = parameters.getProperty("arcs").split(",");
+        for (int h = 0; h < arcsString.length; h = h + 2) {
+            int i = Integer.parseInt(arcsString[h]);
+            int j = Integer.parseInt(arcsString[h + 1]);
+            arcs[i][j] = true;
+            allArcs[i][j] = true;
+        }
+
+        //Define airport arcs
+        boolean[][] airportArcs = new boolean[nNodes][nNodes];
+        String[] airportArcsString = parameters.getProperty("airport_arcs").split(",");
+        for (int h = 0; h < airportArcsString.length; h = h + 2) {
+            int i = Integer.parseInt(airportArcsString[h]);
+            int j = Integer.parseInt(airportArcsString[h + 1]);
+            airportArcs[i][j] = true;
+            allArcs[i][j] = true;
+        }
+
+        // Define the Routes
+       //Define the cheap routes
+        boolean[][] cheapRoutes = new boolean[N.size()][N.size()];
+        String[] cheapRoutesString = parameters.getProperty("cheap_Routes").split(",");
+        for (int h = 0; h < cheapRoutesString.length; h = h + 2) {
+            int i = Integer.parseInt(cheapRoutesString[h]);
+            int j = Integer.parseInt(cheapRoutesString[h + 1]);
+            cheapRoutes[i][j] = true;
+        }
+
+        //Define the affordable routes
+        boolean[][] affordRoutes = new boolean[N.size()][N.size()];
+        String[] affordRoutesString = parameters.getProperty("affordable_Routes").split(",");
+        for (int h = 0; h < affordRoutesString.length; h = h + 2) {
+            int i = Integer.parseInt(affordRoutesString[h]);
+            int j = Integer.parseInt(affordRoutesString[h + 1]);
+            affordRoutes[i][j] = true;
+        }
+
+        //Define the expensive routes
+        boolean[][] expensRoutes = new boolean[N.size()][N.size()];
+        String[] expensRoutesString = parameters.getProperty("expensive_Routes").split(",");
+        for (int h = 0; h < expensRoutesString.length; h = h + 2) {
+            int i = Integer.parseInt(expensRoutesString[h]);
+            int j = Integer.parseInt(expensRoutesString[h + 1]);
+            expensRoutes[i][j] = true;
+        }
+
+        //Define the arrival capacity of each airport
+        int[] arrivalCapacity = new int[nNodes];
+        int[] departureCapacity = new int[nNodes];
+        int[] depArea = new int[nNodes];
+        int[] arArea = new int[nNodes];
+        String[] airportsString = parameters.getProperty("airports").split(",");
+        String[] airportsArCapString = parameters.getProperty("ar_cap_airports").split(",");
+        String[] airportsDepCapString = parameters.getProperty("dep_cap_airports").split(",");
+        String[] depAreaString = parameters.getProperty("dep_area").split(",");
+        String[] arAreaString = parameters.getProperty("ar_area").split(",");
+        for (int h = 0; h < airportsString.length; h++) {
+            int port = Integer.parseInt(airportsString[h]);
+            int arCap = Integer.parseInt(airportsArCapString[h]);
+            int depCap = Integer.parseInt(airportsDepCapString[h]);
+            int dep = Integer.parseInt(depAreaString[h]);
+            int ar = Integer.parseInt(arAreaString[h]);
+            arrivalCapacity[port] = arCap;
+            departureCapacity[port] = depCap;
+            depArea[port] = dep;
+            arArea[port] = ar;
+        }
+
+        //Define the capacity of arcs at each level
+        String[] levelsString = parameters.getProperty("levels").split(",");
+        String[] capArcsLevelsString = parameters.getProperty("cap_per_level").split(",");
+        int[] capLevels = new int[nLevels];
+        int groundL = Integer.parseInt(parameters.getProperty("groundLevel"));
+        int maxLevel = L.get(L.size()-1);
+        for (int h = 0; h < levelsString.length; h++) {
+            int Cap_Level = Integer.parseInt(capArcsLevelsString[h]);
+            capLevels[h] = Cap_Level;
+        }
+
+        //Define the properties of each airplane type
+        //Get the types
+        String[] typeString = parameters.getProperty("types").split(",");
+        //Get the fuel consumption cost for each type and level
+        String[] cost10String = parameters.getProperty("cost1_0").split(",");
+        String[] cost11String = parameters.getProperty("cost1_1").split(",");
+        String[] cost12String = parameters.getProperty("cost1_2").split(",");
+        String[] cost13String = parameters.getProperty("cost1_3").split(",");
+        //Get the additional fuel consumption cost for each type
+        String[] cost2String = parameters.getProperty("cost2").split(",");
+        //Get the fuel consumption cost due to level change for each type
+        String[] cost3String = parameters.getProperty("cost3").split(",");
+        //Get the preferred travel time of arc for each type
+        String[] tPrString = parameters.getProperty("tPr").split(",");
+        //Get the maximum travel time of arc for each type
+        String[] tMaxString = parameters.getProperty("tMax").split(",");
+        //Get the maximum travel duration for each type
+        String[] flightArcsString = parameters.getProperty("arcs_per_flight").split(",");
+        //Get the maximum departure waiting time for each type
+        String[] depMaxString = parameters.getProperty("depMax").split(",");
+        //Get the passenger capacity for each type
+        String[] capFlightString = parameters.getProperty("flight_cap").split(",");
+        //Get the cheap ticket price for each type
+        String[] cheapString = parameters.getProperty("cheap_ticket").split(",");
+        //Get the affordable ticket price for each type
+        String[] affordableString = parameters.getProperty("affordable_ticket").split(",");
+        //Get the expensive ticket price for each type
+        String[] expensiveString = parameters.getProperty("expensive_ticket").split(",");
+
+        double[][] cost1 = new double[nAirplanes][nLevels];
+        double[] cost2 = new double[nAirplanes];
+        double[] cost3 = new double[nAirplanes];
+        int[] tPr = new int[nAirplanes];
+        int[] tMax = new int[nAirplanes];
+        int[] depMax = new int[nAirplanes];
+        int[] noArcsFl = new int[nAirplanes];
+        int[] capPassengers = new int[nAirplanes];
+        double[] cheapTicket = new double[nAirplanes];
+        double[] affordableTicket = new double[nAirplanes];
+        double[] expensiveTicket = new double[nAirplanes];
+        int step = 0;
+        for (int h = 0; h < typeString.length; h++) {
+            int nType = Integer.parseInt(typeString[h]);
+            double cost_10 = Double.parseDouble(cost10String[h]);
+            double cost_11 = Double.parseDouble(cost11String[h]);
+            double cost_12 = Double.parseDouble(cost12String[h]);
+            double cost_13 = Double.parseDouble(cost13String[h]);
+            double cost_2 = Double.parseDouble(cost2String[h]);
+            double cost_3 = Double.parseDouble(cost3String[h]);
+            int t_pr = Integer.parseInt(tPrString[h]);
+            int t_max = Integer.parseInt(tMaxString[h]);
+            int dep_max = Integer.parseInt(depMaxString[h]);
+            int no_arcs = Integer.parseInt(flightArcsString[h]);
+            int flight_cap = Integer.parseInt(capFlightString[h]);
+            double cheap_ticket = Integer.parseInt(cheapString[h]);
+            double affordable_ticket = Integer.parseInt(affordableString[h]);
+            double expensive_ticket = Integer.parseInt(expensiveString[h]);
+            for (int g = 0; g < nType; g++) {
+                cost1[step][0] = cost_10;
+                cost1[step][1] = cost_11;
+                cost1[step][2] = cost_12;
+                cost1[step][3] = cost_13;
+                cost2[step] = cost_2;
+                cost3[step] = cost_3;
+                tPr[step] = t_pr;
+                tMax[step] = t_max;
+                depMax[step] = dep_max;
+                noArcsFl[step] = no_arcs;
+                capPassengers[step] = flight_cap;
+                cheapTicket[step] = cheap_ticket;
+                affordableTicket[step] = affordable_ticket;
+                expensiveTicket[step] = expensive_ticket;
+                step++;
+            }
+        }
+
+        //Get the ground holding cost for each type and each airport
+        String[] costGH_1String = parameters.getProperty("costGH_1").split(",");
+        String[] costGH_4String = parameters.getProperty("costGH_4").split(",");
+        String[] costGH_9String = parameters.getProperty("costGH_9").split(",");
+        String[] costGH_11String = parameters.getProperty("costGH_11").split(",");
+        String[] costGH_14String = parameters.getProperty("costGH_14").split(",");
+        int index = 0;
+        double[][] costGH = new double[nAirplanes][nNodes];
+        for (int h = 0; h < typeString.length; h++) {
+            int nType = Integer.parseInt(typeString[h]);
+            double costGH_1 = Double.parseDouble(costGH_1String[h]);
+            double costGH_4 = Double.parseDouble(costGH_4String[h]);
+            double costGH_9 = Double.parseDouble(costGH_9String[h]);
+            double costGH_11 = Double.parseDouble(costGH_11String[h]);
+            double costGH_14 = Double.parseDouble(costGH_14String[h]);
+            for (int g = 0; g < nType; g++) {
+                costGH[index][1] = costGH_1;
+                costGH[index][4] = costGH_4;
+                costGH[index][9] = costGH_9;
+                costGH[index][11] = costGH_11;
+                costGH[index][14] = costGH_14;
+                index++;
+            }
+        }
+
+        int[] dMax = new int[nAirplanes];
+        for (int k : K){
+            dMax[k] = tMax[k] * noArcsFl[k];
+        }
+
+        //Define number of permitted arcs
+        int nArcs = 0;
+        for (int i : N)
+            for (int j : N)
+                if (arcs[i][j])
+                    nArcs++;
+
+        //Flight Data
+        String[] airplanesString = parameters.getProperty("airplanes").split(",");
+        // Get the departure airport of each airplane
+        String[] depAirportString = parameters.getProperty("dep_airport").split(",");
+        // Get the arrival airport of each airplane
+        String[] arAirportString = parameters.getProperty("ar_airport").split(",");
+        // Get the departure time period of each airplane
+        String[] depTimeString = parameters.getProperty("dep_time").split(",");
+        int[] depPort = new int[nAirplanes];
+        int[] arPort = new int[nAirplanes];
+        int[] depTime = new int[nAirplanes];
+        for (int h = 0; h < airplanesString.length; h++) {
+            int dep_Port = Integer.parseInt(depAirportString[h]);
+            int ar_Port = Integer.parseInt(arAirportString[h]);
+            int dep_Time = Integer.parseInt(depTimeString[h]);
+            depPort[h] = dep_Port;
+            arPort[h] = ar_Port;
+            depTime[h] = dep_Time;
+        }
+
+        //Calculate the ticket losses due to cancellation
+        double[] tickets = new double[nAirplanes];
+
+        for (int k : K) {
+            if (cheapRoutes[depPort[k]][arPort[k]])
+                tickets[k] = capPassengers[k] * cheapTicket[k];
+            if (affordRoutes[depPort[k]][arPort[k]])
+                tickets[k] = capPassengers[k] * affordableTicket[k];
+            if (expensRoutes[depPort[k]][arPort[k]])
+                tickets[k] = capPassengers[k] * expensiveTicket[k];
+        }
+
+        // Calculate the cancellation costs for each flight
+        double[] costCancel = new double[nAirplanes];
+        for (int k : K)
+            costCancel[k] = tickets[k] + (depMax[k] * costGH[k][depPort[k]]);
+
+        IloCplex cplex = new IloCplex();
+
+        // Define the decision variables
+        IloNumVar[][][][][] f = new IloNumVar[nAirplanes][nLevels][nNodes][nNodes][periods];
+
+        for (int k : K)
+            for (int l : L)
+                for (int i : N)
+                    for (int j : N)
+                        if (allArcs[i][j])
+                            for (int t : T)
+                                f[k][l][i][j][t] = cplex.boolVar(String.format("f_%d_%d_%d_%d_%d", k, l, i, j, t));
+
+        // Define the artificial variables
+        IloNumVar[][][][] r = new IloNumVar[nAirplanes][nLevels][nNodes][nNodes];
+        for (int k : K)
+            for (int l : L)
+                for (int i : N)
+                    for (int j : N)
+                        if (allArcs[i][j])
+                            r[k][l][i][j] = cplex.boolVar(String.format("r_%d_%d_%d_%d", k, l, i, j));
+
+        // Define the artificial variables about cancellation
+        IloNumVar[] x = new IloNumVar[nAirplanes];
+        for (int k : K)
+            x[k] = cplex.boolVar(String.format("x_%d", k));
+
+        //Objective Function
+        //Define the terms of objective functions
+        IloLinearNumExpr objective = cplex.linearNumExpr();
+
+        // energy term of flight duration
+        for (int k : K)
+            for (int t : T)
+                for (int l : L)
+                    for (int i : N)
+                        for (int j : N)
+                            if(allArcs[i][j])
+                                objective.addTerm(cost1[k][l], f[k][l][i][j][t]);
+
+        // energy term due to ground holding
+        IloLinearNumExpr[] termGH = new IloLinearNumExpr[K.size()];
+        for (int k : K) {
+            termGH[k] = cplex.linearNumExpr();
+            for (int t : T)
+                termGH[k].addTerm(costGH[k][depPort[k]]*t, f[k][groundL][depArea[depPort[k]]][depPort[k]][t]);
+            termGH[k].add(cplex.linearNumExpr(-costGH[k][depPort[k]]*depTime[k]));
+            termGH[k].addTerm(costGH[k][depPort[k]]*depTime[k],x[k]);
+            objective.add(termGH[k]);
+        }
+
+
+        // energy term of speed deviation
+        IloLinearNumExpr[][][][] term2 = new IloLinearNumExpr[K.size()][L.size()][N.size()][N.size()];
+
+        for (int k : K)
+            for (int l : L)
+                for (int i : N)
+                    for (int j : N)
+                        if(arcs[i][j]) {
+                            term2[k][l][i][j] = cplex.linearNumExpr();
+                            for (int t : T)
+                                term2[k][l][i][j].addTerm(cost2[k], f[k][l][i][j][t]);
+                            term2[k][l][i][j].addTerm(-tPr[k]*cost2[k], r[k][l][i][j]);
+                            objective.add(term2[k][l][i][j]);
+                        }
+
+        // energy term of level alteration
+        IloLinearNumExpr[][][] term3 = new IloLinearNumExpr[K.size()][T.size()][L.size()];
+
+        for (int k : K)
+            for (int t = depTime[k]+1; t <= depTime[k]+dMax[k]; t++)
+                for (int l : L){
+                    term3[k][t][l] = cplex.linearNumExpr();
+                    for ( int i : N)
+                        for (int j : N)
+                            if (allArcs[i][j])
+                                term3[k][t][l].addTerm(cost3[k], f[k][l][i][j][t-1]);
+                    for (int m : L)
+                        if (m!=l)
+                            for ( int i : N)
+                                for (int j : N)
+                                    if (allArcs[i][j])
+                                        term3[k][t][l].addTerm(cost3[k], f[k][l][i][j][t]);
+                    term3[k][t][l].addTerm(cost3[k],r[k][groundL][arPort[k]][arArea[arPort[k]]]);
+                    term3[k][t][l].add(cplex.linearNumExpr(-cost3[k]));
+                    term3[k][t][l].addTerm(cost3[k],x[k]);
+                    objective.add(term3[k][t][l]);
+                }
+
+        // Cancellation term
+        IloLinearNumExpr[] termCancel = new IloLinearNumExpr[K.size()];
+
+        for (int k : K) {
+            termCancel[k] = cplex.linearNumExpr();
+            termCancel[k].add(cplex.linearNumExpr(costCancel[k]));
+            for (int t : T)
+                termCancel[k].addTerm(-costCancel[k], f[k][groundL][depArea[depPort[k]]][depPort[k]][t]);
+            objective.add(termCancel[k]);
+        }
+
+        //Define the O.F. : Minimization of all cost terms.
+        cplex.addMinimize(objective);
+
+
+        // under the CONSTRAINTS
+
+        //C1: Initial Constraint
+        IloLinearNumExpr[] initialCon = new IloLinearNumExpr[K.size()];
+
+        for (int k : K) {
+            initialCon[k] = cplex.linearNumExpr();
+            for (int t = 0; t < depTime[k]; t++)
+                for (int l : L)
+                    for (int i : N)
+                        for (int j : N)
+                            if (allArcs[i][j]) {
+                                initialCon[k].addTerm(1.0, f[k][l][i][j][t]);
+                            }
+            cplex.addEq(0, initialCon[k], "c1_" + k);
+        }
+
+
+        //C2: Flight departure constraint
+        IloLinearNumExpr[] departureCon = new IloLinearNumExpr[K.size()];
+        IloLinearNumExpr[] departRestrict = new IloLinearNumExpr[K.size()];
+
+        for (int k : K) {
+            departureCon[k] = cplex.linearNumExpr();
+            departRestrict[k] = cplex.linearNumExpr();
+            for (int t = depTime[k]; t <= depTime[k] + depMax[k]; t++)
+                departureCon[k].addTerm(1.0, f[k][groundL][depArea[depPort[k]]][depPort[k]][t]);
+            cplex.addLe(departureCon[k], 1.0, "c2_" + k);
+
+            for (int t = depTime[k] + depMax[k] +1; t < periods; t++)
+                departRestrict[k].addTerm(1.0, f[k][groundL][depArea[depPort[k]]][depPort[k]][t]);
+            cplex.addEq(departRestrict[k], 0.0, "c2DR_" + k);
+        }
+
+
+        IloLinearNumExpr[] depCon = new IloLinearNumExpr[K.size()];
+        for (int k : K) {
+            depCon[k] = cplex.linearNumExpr();
+            for (int t : T)
+                depCon[k].addTerm(1.0, f[k][groundL][depArea[depPort[k]]][depPort[k]][t]);
+            cplex.addLe(depCon[k],1.0, "c2depdur_"+k);
+        }
+
+        //C3: Flight level constraint
+        for (int k : K)
+            for (int t = depTime[k]; t < periods; t++)
+                for (int i : N)
+                    for (int j : N)
+                        if (arcs[i][j])
+                            cplex.addEq(0, f[k][groundL][i][j][t], "c3_" + k+"_(" + i+"," + j +")_"+ t);
+
+        //C4: Flight arrival - cancellation constraint
+        IloLinearNumExpr[] arrivalCon = new IloLinearNumExpr[K.size()];
+        IloLinearNumExpr[] cancelCon = new IloLinearNumExpr[K.size()];
+        for (int k : K) {
+            arrivalCon[k] = cplex.linearNumExpr();
+            cancelCon[k] = cplex.linearNumExpr();
+            for (int t = depTime[k]; t <= depTime[k] + dMax[k]; t++)
+                arrivalCon[k].addTerm(1.0, f[k][groundL][arPort[k]][arArea[arPort[k]]][t]);
+            for (int t = depTime[k]; t <= depTime[k] + depMax[k]; t++)
+                cancelCon[k].addTerm(1.0, f[k][groundL][depArea[depPort[k]]][depPort[k]][t]);
+            cplex.addEq(cancelCon[k], arrivalCon[k], "c4_"+k);
+        }
+
+        //C5: Departure capacity constraint
+        IloLinearNumExpr[][] departureCapCon = new IloLinearNumExpr[T.size()][N.size()];
+
+        for (int t : T)
+            for (int p : P) {
+               departureCapCon[t][p] = cplex.linearNumExpr();
+                for (int k : K)
+                    if (depPort[k] == p)
+                        departureCapCon[t][p].addTerm(1.0, f[k][groundL][depArea[p]][p][t]);
+                cplex.addLe(departureCapCon[t][p],departureCapacity[p],"c5_" + t +"_"+ p);
+            }
+
+        //C6: Arrival capacity constraint
+        IloLinearNumExpr[][] arrivalCapCon = new IloLinearNumExpr[T.size()][N.size()];
+
+        for (int t : T)
+            for (int p : P) {
+                arrivalCapCon[t][p] = cplex.linearNumExpr();
+                for (int k : K)
+                    if (arPort[k] == p)
+                        arrivalCapCon[t][p].addTerm(1.0, f[k][groundL][p][arArea[p]][t]);
+                cplex.addLe(arrivalCapCon[t][p],arrivalCapacity[p],"c6_" + t +"_"+ p);
+            }
+
+        //C7: Arcs and levels capacity constraint
+        IloLinearNumExpr[][][][] levelCapCon = new IloLinearNumExpr[L.size()][N.size()][N.size()][T.size()];
+
+        for (int t : T)
+            for (int l = 1; l <= maxLevel; l++)
+                for (int i : N)
+                    for (int j : N)
+                        if (arcs[i][j]) {
+                            levelCapCon[l][i][j][t] = cplex.linearNumExpr();
+                            for (int k : K)
+                                levelCapCon[l][i][j][t].addTerm(1.0, f[k][l][i][j][t]);
+
+                            cplex.addLe(levelCapCon[l][i][j][t],capLevels[l], "c7_" + l+"_(" + i+"," + j +")_"+ t);
+                        }
+
+        //C8: Delay allotment constraint
+        IloLinearNumExpr[][][][] delayAllotCon = new IloLinearNumExpr[K.size()][L.size()][N.size()][N.size()];
+
+        for (int k : K)
+            for (int l : L)
+                for (int i : N)
+                    for (int j : N) {
+                        if (arcs[i][j]) {
+                            delayAllotCon[k][l][i][j] = cplex.linearNumExpr();
+                            for (int t = depTime[k]; t < periods; t++)
+                                delayAllotCon[k][l][i][j].addTerm(1.0, f[k][l][i][j][t]);
+                            cplex.addGe(delayAllotCon[k][l][i][j], cplex.prod(r[k][l][i][j], tPr[k]),
+                                    "c8l_" + k + "_" + l + "_(" + i + "," + j + ")");
+                            cplex.addLe(delayAllotCon[k][l][i][j], tMax[k],
+                                    "c8r_" + k + "_" + l + "_(" + i + "," + j + ")");
+                        }
+                    }
+
+        //C9: Route continuity constraint
+        IloLinearNumExpr[][][] routeContinuity = new IloLinearNumExpr[K.size()][N.size()][T.size()];
+
+        for (int k : K)
+            for (int t = depTime[k]; t < depTime[k] + dMax[k]; t++)
+                for (int j : N)
+                    if(j!= arArea[arPort[k]]){
+                        routeContinuity[k][j][t] = cplex.linearNumExpr();
+                        for (int i : N)
+                            if (allArcs[i][j])
+                                for (int l : L) {
+                                    routeContinuity[k][j][t].addTerm(1.0, f[k][l][i][j][t]);
+                                    routeContinuity[k][j][t].addTerm(-1.0, f[k][l][i][j][t+1]);
+                                }
+                        for (int u : N)
+                            if (allArcs[j][u])
+                                if (u != arArea[depPort[k]])
+                                    for (int m : L)
+                                        routeContinuity[k][j][t].addTerm(-1.0, f[k][m][j][u][t+1]);
+
+                        cplex.addGe(0, routeContinuity[k][j][t],"c9_"+k+"_("+j+")_"+t);
+                }
+
+        //C10: Flight enroute indicator constraint
+        IloLinearNumExpr[][] flightEnroute = new IloLinearNumExpr[K.size()][T.size()];
+        IloLinearNumExpr[][] depArCon = new IloLinearNumExpr[K.size()][T.size()];
+
+        for (int k : K)
+            for (int t = depTime[k]; t <periods; t++) {
+                flightEnroute[k][t] = cplex.linearNumExpr();
+                depArCon[k][t] = cplex.linearNumExpr();
+                for (int l : L)
+                    for (int i : N)
+                        for (int j : N)
+                            if(allArcs[i][j])
+                                flightEnroute[k][t].addTerm(1.0, f[k][l][i][j][t]);
+                for (int u = 0; u <= t; u++)
+                    depArCon[k][t].addTerm(1.0, f[k][groundL][depArea[depPort[k]]][depPort[k]][u]);
+                for (int u = 0; u < t; u++)
+                    depArCon[k][t].addTerm(-1.0, f[k][groundL][arPort[k]][arArea[arPort[k]]][u]);
+                cplex.addEq(flightEnroute[k][t], depArCon[k][t], "c10_"+k+"_"+t);
+            }
+
+        //C11: Artificial variable assignment constraint
+        IloLinearNumExpr[][][][] artVarAssCon = new IloLinearNumExpr[K.size()][L.size()][N.size()][N.size()];
+
+        // artificial variable r
+        for (int k : K)
+            for (int l : L)
+                for (int i : N)
+                    for (int j : N)
+                        if (allArcs[i][j]) {
+                            artVarAssCon[k][l][i][j] = cplex.linearNumExpr();
+                            for (int t : T)
+                                artVarAssCon[k][l][i][j].addTerm(1.0, f[k][l][i][j][t]);
+                            cplex.addGe(r[k][l][i][j],cplex.prod(1.0/periods,artVarAssCon[k][l][i][j]),
+                                    "cr11L_" + k+"_"+l+"_("+i+","+j+")");
+                            cplex.addLe(r[k][l][i][j],cplex.prod(1,artVarAssCon[k][l][i][j]),
+                                    "cr11R_" + k+"_"+l+"_("+i+","+j+")");
+                        }
+
+        IloLinearNumExpr[] sumDepCon = new IloLinearNumExpr[K.size()];
+
+        for (int k : K) {
+            sumDepCon[k] = cplex.linearNumExpr();
+            sumDepCon[k].add(cplex.linearNumExpr(1));
+            for (int t : T)
+                sumDepCon[k].addTerm(-1, f[k][groundL][depArea[depPort[k]]][depPort[k]][t]);
+            cplex.addEq(x[k], sumDepCon[k], "cx12_" + k);
+        }
+
+
+        // Export model
+        cplex.exportModel("ATM4Dmodel.lp");
+
+        // Define parameters
+       // cplex.setParam(IloCplex.Param.MIP.Tolerances.MIPGap, 0.05);
+        //cplex.setParam(IloCplex.Param.TimeLimit, 240);
+
+        // Solve model
+        boolean cplexSolve = cplex.solve();
+        System.out.println(cplex.getCplexStatus());
+
+        //Print results of Objective function
+        if(cplexSolve){
+            System.out.println("Cplex version = "+cplex.getVersion());
+            System.out.println("Solving time = "+cplex.getCplexTime());
+            System.out.println("Number of binary variables = "+cplex.getNbinVars());
+            System.out.println("Number of iterations = "+cplex.getNiterations());
+            System.out.println("Objective function = "+cplex.getObjValue());
+            System.out.println();
+            System.out.println("Decision Variables");
+            for (int k : K) {
+                System.out.println();
+                System.out.println("Airplane "+k);
+                for (int t : T)
+                    for (int l : L)
+                        for (int i : N)
+                            for (int j : N)
+                                if (allArcs[i][j])
+                                    if (cplex.getValue(f[k][l][i][j][t]) == 1)
+                                        System.out.println("f_" + k + "_" + l + "_(" + i + "," + j + ")_" + t + " = " +
+                                                cplex.getValue(f[k][l][i][j][t]));
+            }
+            System.out.println();
+            System.out.println("Artificial Decision Variables");
+            for (int k : K) {
+                System.out.println();
+                System.out.println("Airplane " + k);
+                for (int l : L)
+                    for (int i : N)
+                        for (int j : N)
+                            if (allArcs[i][j])
+                                if (cplex.getValue(r[k][l][i][j]) == 1)
+                                    System.out.println("r_" + k + "_" + l + "_(" + i + "," + j + ") = " + cplex.getValue(r[k][l][i][j]));
+            }
+            System.out.println();
+            System.out.println("Cancellation Decision Variables");
+            for (int k : K) {
+                System.out.println();
+                System.out.println("Airplane " + k);
+                System.out.println("x_" + k + " = " + cplex.getValue(x[k]));
+            }
+        }
+    }
+}
