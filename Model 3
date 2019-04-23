@@ -15,7 +15,7 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 /**
- * Created by Hernan Caceres & Charis Ntakolia on 4/25/2017.
+ * Created by Charis Ntakolia & Hernan Caceres on 4/25/2017.
  */
 public class ATM4D {
 
