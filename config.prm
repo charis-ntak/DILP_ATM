@@ -1,8 +1,0 @@
-CPLEX Parameter File Version 12.7.1.0
-
-# Relative MIP gap tolerance
-2009 0.05
-
-# Optimizer time limit in seconds
-1039 15
-
